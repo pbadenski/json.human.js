@@ -116,15 +116,21 @@
         }
     }
 
-    function _format(data, options, parentKey) {
+    function updateObjectMap(objectMap, objectKey, html) {
+      objectMap[objectKey] = objectMap[objectKey] || [];
+      objectMap[objectKey].push(html);
+      return objectMap;
+    }
 
-        var result, container, key, keyNode, valNode, len, childs, tr, value,
+    function _format(data, options, objectMap, parentKey) {
+
+        var html, container, key, keyNode, valNode, len, childs, tr, value,
             isEmpty = true,
             accum = [],
             type = getType(data);
 
         // Initialized & used only in case of objects & arrays
-        var hyperlinksEnabled, aTarget, hyperlinkKeys ;
+        var hyperlinksEnabled, aTarget, hyperlinkKeys, thisProperty, dontShowProperties;
 
         switch (type) {
         case BOOL:
@@ -147,27 +153,29 @@
                     sn("span", BOOL_FALSE_CLASS_NAME, boolOpt.text.false));
             }
 
-            result = container;
+            html = container;
             break;
 
         case STRING:
             if (data === "") {
-                result = sn("span", STRING_EMPTY_CLASS_NAME, "(Empty Text)");
+                html = sn("span", STRING_EMPTY_CLASS_NAME, "(Empty Text)");
             } else {
-                result = sn("span", STRING_CLASS_NAME, data);
+                html = sn("span", STRING_CLASS_NAME, data);
             }
             break;
         case INT:
-            result = sn("span", INT_CLASS_NAME, data);
+            html = sn("span", INT_CLASS_NAME, data);
             break;
         case FLOAT:
-            result = sn("span", FLOAT_CLASS_NAME, data);
+            html = sn("span", FLOAT_CLASS_NAME, data);
             break;
         case OBJECT:
             childs = [];
 
             aTarget =  options.hyperlinks.target;
             hyperlinkKeys = options.hyperlinks.keys;
+            dontShowProperties = options.dontShowProperties;
+            thisProperty = options.thisProperty;
 
             // Is Hyperlink Key
             hyperlinksEnabled =
@@ -176,11 +184,14 @@
                 hyperlinkKeys.length > 0;
 
             for (key in data) {
+                if (dontShowProperties != undefined && dontShowProperties.indexOf(key) != -1) {
+                  continue;
+                }
                 isEmpty = false;
 
                 value = data[key];
 
-                valNode = _format(value, options, key);
+                valNode = _format(value, options, objectMap, key).html;
                 keyNode = sn("th", OBJ_KEY_CLASS_NAME, key);
 
                 if( hyperlinksEnabled &&
@@ -200,15 +211,20 @@
             }
 
             if (isEmpty) {
-                result = sn("span", OBJ_EMPTY_CLASS_NAME, "(Empty Object)");
+                html = sn("span", OBJ_EMPTY_CLASS_NAME, "(Empty Object)");
             } else {
-                result = scn("table", OBJECT_CLASS_NAME, scn("tbody", '', childs));
+                html = scn("table", OBJECT_CLASS_NAME, scn("tbody", '', childs));
+                if (thisProperty !== undefined) {
+                  updateObjectMap(objectMap, data[thisProperty], html);
+                }
             }
             break;
         case FUNCTION:
-            result = sn("span", FUNCTION_CLASS_NAME, data);
+            html = sn("span", FUNCTION_CLASS_NAME, data);
             break;
         case ARRAY:
+            thisProperty = options.thisProperty;
+
             if (data.length > 0) {
                 childs = [];
                 var showArrayIndices = options.showArrayIndex;
@@ -228,10 +244,10 @@
                     value = data[key];
 
                     if(hyperlinksEnabled && typeof(value) === "string") {
-                        valNode = _format(value, options, key);
+                        valNode = _format(value, options, objectMap, key).html;
                         valNode = scn("td", ARRAY_VAL_CLASS_NAME, linkNode(valNode, value, aTarget));
                     } else {
-                        valNode = scn("td", ARRAY_VAL_CLASS_NAME, _format(value, options, key));
+                        valNode = scn("td", ARRAY_VAL_CLASS_NAME, _format(value, options, objectMap, key).html);
                     }
 
                     tr = document.createElement("tr");
@@ -244,28 +260,33 @@
                     childs.push(tr);
                 }
 
-                result = scn("table", ARRAY_CLASS_NAME, scn("tbody", '', childs));
+                html = scn("table", ARRAY_CLASS_NAME, scn("tbody", '', childs));
+                if (thisProperty !== undefined) {
+                  updateObjectMap(objectMap, data[thisProperty], html);
+                }
             } else {
-                result = sn("span", ARRAY_EMPTY_CLASS_NAME, "(Empty List)");
+                html = sn("span", ARRAY_EMPTY_CLASS_NAME, "(Empty List)");
             }
             break;
         default:
-            result = sn("span", UNKNOWN_CLASS_NAME, data);
+            html = sn("span", UNKNOWN_CLASS_NAME, data);
             break;
         }
 
-        return result;
+        return {html: html, objectMap: objectMap};
     }
 
     function format(data, options) {
         options = validateOptions(options || {});
 
-        var result;
+        var result, html;
 
-        result = _format(data, options);
-        result.className = result.className + " " + prefixer("root");
+        result = _format(data, options, {});
+        html = result.html;
+        html.className = html.className + " " + prefixer("root");
+        html.objectMap = result.objectMap
 
-        return result;
+        return html;
     }
 
     function validateOptions(options){
